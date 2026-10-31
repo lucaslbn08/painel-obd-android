@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/fundo</item>
+        <item name="android:statusBarColor">@color/barra</item>
+        <item name="android:navigationBarColor">@color/barra</item>
+    </style>
+    <color name="fundo">#0a0e13</color>
+    <color name="barra">#10161e</color>
+</resources>

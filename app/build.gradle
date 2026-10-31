@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'br.painelobd'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'br.painelobd'
+        minSdk 24
+        targetSdk 34
+        versionCode System.getenv('GITHUB_RUN_NUMBER') ? System.getenv('GITHUB_RUN_NUMBER').toInteger() : 1
+        versionName "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+
+    signingConfigs {
+        // Chave fixa: permite instalar versões novas por cima sem desinstalar
+        painel {
+            storeFile file('painel-obd.keystore')
+            storePassword 'painelobd'
+            keyAlias 'painelobd'
+            keyPassword 'painelobd'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.painel
+        }
+        debug {
+            signingConfig signingConfigs.painel
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

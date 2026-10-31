@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Painel OBD</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <svg class="logo" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="none" stroke="#1fd4ff" stroke-width="3"/><path d="M12 27a11 11 0 1 1 16 0" fill="none" stroke="#2a5d6d" stroke-width="3"/><line x1="20" y1="20" x2="29" y2="12" stroke="#ff3b30" stroke-width="3" stroke-linecap="round"/><circle cx="20" cy="20" r="3" fill="#e8eef4"/></svg>
+    <div class="brand"><b>Painel OBD</b><small>Diagnóstico OBD-II</small></div>
+    <div class="status" id="status"><i></i><span>Desconectado</span></div>
+    <button class="btn rec" id="btn-rec" title="Gravar trajeto">● REC</button>
+    <button class="btn accent" id="btn-conn">Conectar</button>
+  </header>
+
+  <main>
+    <div class="progress" id="progress"><i></i></div>
+
+    <!-- PAINEL -->
+    <section class="pane active" id="dash-pane">
+      <div class="dash">
+        <div class="gauge big g-rpm" id="g-rpm"></div>
+        <div class="mid">
+          <div class="lamps">
+            <div class="lamp" id="l-mil">INJEÇÃO</div>
+            <div class="lamp" id="l-temp">TEMPERATURA</div>
+            <div class="lamp" id="l-bat">BATERIA</div>
+            <div class="lamp" id="l-fuel">COMBUSTÍVEL</div>
+          </div>
+          <div class="small">
+            <div class="gauge" id="g-ect"></div>
+            <div class="gauge" id="g-fuel"></div>
+            <div class="gauge" id="g-load"></div>
+            <div class="gauge" id="g-thr"></div>
+          </div>
+        </div>
+        <div class="gauge big g-spd" id="g-spd"></div>
+        <div class="info">
+          <div class="kv"><span>Falhas</span><b id="kv-dtc">—</b></div>
+          <div class="kv"><span>Combustível</span><b id="kv-fuelsys">—</b></div>
+          <div class="kv"><span>Motor ligado há</span><b id="kv-runtime" class="num">—</b></div>
+          <div class="kv"><span>Km desde limpeza</span><b id="kv-dist" class="num">—</b></div>
+          <div class="kv"><span>Protocolo</span><b id="kv-proto">—</b></div>
+          <div class="kv"><span>Leituras/s</span><b id="kv-rate" class="num">—</b></div>
+        </div>
+        <div class="tiles" id="tiles"></div>
+      </div>
+    </section>
+
+    <!-- DADOS -->
+    <section class="pane" id="data-pane">
+      <div id="chart-wrap"><canvas id="chart"></canvas></div>
+      <div class="actions" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span class="hint" id="data-count">Conecte ao carro para ver os dados.</span>
+        <button class="btn" id="btn-minmax">Zerar mín./máx.</button>
+      </div>
+      <div class="card" id="data-list"></div>
+    </section>
+
+    <!-- FALHAS -->
+    <section class="pane" id="dtc-pane">
+      <div class="actions">
+        <button class="btn accent" id="btn-dtc">Ler falhas</button>
+        <button class="btn danger" id="btn-clear">Apagar falhas</button>
+        <button class="btn" id="btn-freeze">Congelamento de dados</button>
+      </div>
+      <div class="banner" id="mil-banner">Conecte ao carro para ler as falhas</div>
+      <div class="section-title">Códigos de falha</div>
+      <div class="card" id="dtc-list"><div class="empty">Nenhuma leitura ainda</div></div>
+      <div class="section-title">Congelamento de dados</div>
+      <p class="hint">Condições do motor no momento em que a falha foi registrada.</p>
+      <div class="card" id="ff-list"><div class="empty">Toque em “Congelamento de dados”</div></div>
+      <p class="hint">“Pendente” é uma falha detectada uma vez e ainda não confirmada. “Permanente” só some sozinha depois que o carro confirmar o conserto.</p>
+    </section>
+
+    <!-- PRONTIDÃO -->
+    <section class="pane" id="ready-pane">
+      <div class="actions" style="align-items:center">
+        <button class="btn accent" id="btn-ready">Atualizar</button>
+        <b id="ready-sum" style="font-size:13px"></b>
+      </div>
+      <p class="hint">Os monitores são autotestes que a central faz enquanto você dirige. Depois de apagar falhas ou desligar a bateria, eles voltam a “Incompleto” até o carro rodar o suficiente. Vistorias de emissão costumam exigir a maioria como “Pronto”.</p>
+      <div class="card" id="ready-list"><div class="empty">Conecte ao carro para ver os monitores</div></div>
+    </section>
+
+    <!-- VEÍCULO -->
+    <section class="pane" id="veh-pane">
+      <div class="vgrid">
+        <div class="vitem"><label>Chassi (VIN)</label><div id="v-vin">—</div></div>
+        <div class="vitem"><label>Protocolo de comunicação</label><div id="v-proto">—</div></div>
+        <div class="vitem"><label>Padrão OBD</label><div id="v-std">—</div></div>
+        <div class="vitem"><label>Tipo de combustível</label><div id="v-fuel">—</div></div>
+        <div class="vitem"><label>Identificação da calibração</label><div id="v-calid">—</div></div>
+        <div class="vitem"><label>Nome da central</label><div id="v-ecu">—</div></div>
+        <div class="vitem"><label>Adaptador</label><div id="v-elm">—</div></div>
+        <div class="vitem"><label>Parâmetros disponíveis</label><div id="v-count">—</div></div>
+      </div>
+      <div class="section-title">PIDs suportados</div>
+      <div class="card pidlist" id="pid-list">—</div>
+    </section>
+
+    <!-- TERMINAL -->
+    <section class="pane" id="term-pane">
+      <p class="hint" style="margin-top:0">Envie comandos direto ao adaptador (uso avançado).</p>
+      <div class="chips">
+        <button data-cmd="ATRV">ATRV tensão</button><button data-cmd="ATDP">ATDP protocolo</button>
+        <button data-cmd="010C">010C rotação</button><button data-cmd="0902">0902 chassi</button>
+      </div>
+      <div id="term"></div>
+      <div class="term-in"><input id="term-in" placeholder="Comando" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn accent" id="btn-send">Enviar</button></div>
+    </section>
+  </main>
+
+  <nav id="nav">
+    <button data-pane="dash-pane" class="active"><svg viewBox="0 0 24 24"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="M12 13l4-4"/><circle cx="12" cy="13.5" r="1.2"/></svg>Painel</button>
+    <button data-pane="data-pane"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 4-7 5 6"/><path d="M3 21h18"/></svg>Dados</button>
+    <button data-pane="dtc-pane"><svg viewBox="0 0 24 24"><path d="M5 10h2l1-2h6l1 2h3v3h1v-2h1v6h-1v-2h-1v3h-3l-2 2H9l-2-2H5z"/></svg>Falhas</button>
+    <button data-pane="ready-pane"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Prontidão</button>
+    <button data-pane="veh-pane"><svg viewBox="0 0 24 24"><path d="M5 16l1.5-5.5A2 2 0 0 1 8.4 9h7.2a2 2 0 0 1 1.9 1.5L19 16"/><rect x="3" y="16" width="18" height="4" rx="1.5"/><circle cx="7" cy="18" r=".6"/><circle cx="17" cy="18" r=".6"/></svg>Veículo</button>
+    <button data-pane="term-pane"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg>Terminal</button>
+  </nav>
+</div>
+
+<!-- Folha de conexão -->
+<div class="overlay" id="sheet-wrap">
+  <div class="sheet">
+    <div class="grip"></div>
+    <h2>Conectar ao adaptador</h2>
+    <p class="hint">Escolha o seu ELM327. Ele precisa estar encaixado no carro, com a ignição ligada.</p>
+    <div id="dev-list"></div>
+    <button class="btn" id="btn-pair" style="width:100%;margin-top:14px;padding:13px">Parear novo adaptador…</button>
+    <p class="hint">Na tela de Bluetooth do celular, toque no adaptador (geralmente “OBDII”). Se pedir senha, use 1234 ou 0000. Depois volte aqui.</p>
+  </div>
+</div>
+
+<!-- Diálogo -->
+<div class="overlay dialog-wrap" id="dlg-wrap">
+  <div class="dialog"><h3 id="dlg-title"></h3><p id="dlg-text"></p><div class="actions" id="dlg-actions"></div></div>
+</div>
+<div id="toast"></div>
+
+<script src="pids.js"></script>
+<script src="dtc.js"></script>
+<script src="elm.js"></script>
+<script src="demo.js"></script>
+<script src="gauges.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
