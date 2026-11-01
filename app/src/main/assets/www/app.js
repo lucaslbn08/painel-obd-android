@@ -122,7 +122,9 @@
     S.demo = kind === 'demo';
     if (!S.demo) store.set('device', addr);
     resetSession();
-    const tr = S.demo ? new DemoTransport() : new ELM.BridgeTransport(addr);
+    $('term').textContent = '';
+    termWrite(`=== Conexão ${new Date().toLocaleString('pt-BR')} · ${S.demo ? 'demonstração' : (name || '') + ' ' + (addr || '')} ===\n`);
+    const tr = S.demo ? new DemoTransport((location.hash.match(/demo-(\w+)/) || [])[1]) : new ELM.BridgeTransport(addr);
     S.engine = new ELM.Engine(tr, onEvent);
     S.engine.slowPerCycle = S.pane === 'data-pane' ? 6 : 2;
     $('btn-conn').textContent = 'Cancelar'; $('btn-conn').classList.remove('accent');
@@ -143,7 +145,8 @@
   /* ---------- eventos do motor ---------- */
   function onEvent(kind, a, b) {
     switch (kind) {
-      case 'status': toast(a, 4000); break;
+      case 'status': toast(a, 15000); setStatus(a, 'var(--warn)'); break;
+      case 'log': termWrite('> ' + a + '\n', 'c'); termWrite((b.join('\n') || '(vazio)') + '\n'); break;
       case 'connected': onConnected(a); break;
       case 'data': onData(a, b); break;
       case 'dtc': onDtc(a); break;
@@ -152,13 +155,16 @@
       case 'readiness': onReadiness(a); toast('Monitores atualizados.'); break;
       case 'raw': termWrite((b.join('\n') || '(sem resposta)') + '\n\n'); break;
       case 'job_error': toast('Erro: ' + b, 4000); if (a === 'raw') termWrite('Erro: ' + b + '\n\n'); break;
-      case 'error': busy(false); setStatus('Falha na conexão', 'var(--danger)'); S.failed = true; dialog('Não foi possível conectar', a); break;
+      case 'error':
+        busy(false); setStatus('Falha na conexão', 'var(--danger)'); S.failed = true; $('toast').classList.remove('show');
+        dialog('Não foi possível conectar', a, [['Ver detalhes', ''], ['OK', 'accent']]).then(i => { if (i === 0) document.querySelector('nav button[data-pane="term-pane"]').click(); });
+        break;
       case 'disconnected': onDisconnected(); break;
     }
   }
 
   function onConnected(info) {
-    busy(false);
+    busy(false); $('toast').classList.remove('show');
     S.connected = true; S.info = info;
     S.supported = info.supported.filter(p => !OBD.isBitmap(p));
     setStatus(S.demo ? 'Demonstração' : 'Conectado', 'var(--ok)');

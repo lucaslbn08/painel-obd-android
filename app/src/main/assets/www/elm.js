@@ -65,14 +65,16 @@
       this.t.write(cmd + '\r');
       await new Promise((res, rej) => {
         if (this.buf.includes('>')) return res();
-        const to = setTimeout(() => { this.waiter = null; rej(new ELMError(`O adaptador não respondeu ao comando ${cmd}.`)); }, timeout);
+        const to = setTimeout(() => { this.waiter = null; if (this.log) this.log(cmd, ['(sem resposta em ' + timeout / 1000 + ' s)' + (this.buf ? ' parcial: ' + this.buf.trim() : '')]); rej(new ELMError(`O adaptador não respondeu ao comando ${cmd}.`)); }, timeout);
         this.waiter = { res: () => { clearTimeout(to); res(); }, rej: e => { clearTimeout(to); rej(e); } };
       });
       const text = this.buf.split('>')[0];
       this.buf = '';
       const target = cmd.replace(/ /g, '').toUpperCase();
-      return text.split(/[\r\n]+/).map(l => l.trim().replace(/\0/g, ''))
+      const lines = text.split(/[\r\n]+/).map(l => l.trim().replace(/\0/g, ''))
         .filter(l => l && l.replace(/ /g, '').toUpperCase() !== target);
+      if (this.log) this.log(cmd, lines);
+      return lines;
     }
 
     static parse(lines) {
@@ -95,7 +97,16 @@
 
     async request(cmd, timeout = 4000) { return ELM327.parse(await this.send(cmd, timeout)); }
 
-    async connect() {
+    static ok0100(msgs) { return msgs.some(m => m.length >= 2 && m[0] === 0x41 && m[1] === 0x00); }
+
+    async tryProtocol(p, timeout) {
+      await this.send('ATPC', 3000).catch(e => { if (e instanceof LinkLost) throw e; });
+      await this.send('ATSP' + p, 3000);
+      try { return ELM327.ok0100(await this.request('0100', timeout)); }
+      catch (e) { if (e instanceof LinkLost) throw e; return false; }
+    }
+
+    async connect(progress = () => {}) {
       let lines;
       try { lines = await this.send('ATZ', 6000); }
       catch (e) {
@@ -103,15 +114,31 @@
         this.t.write('\r'); await sleep(500);
         lines = await this.send('ATZ', 6000);
       }
-      await sleep(300);
+      await sleep(400);
       for (const l of lines) if (l.toUpperCase().includes('ELM')) this.version = l.trim();
-      for (const c of ['ATE0', 'ATL0', 'ATS0', 'ATH0', 'ATAT1', 'ATSP0']) await this.send(c, 3000);
-      const msgs = await this.request('0100', 25000);
-      if (!msgs.some(m => m.length >= 2 && m[0] === 0x41 && m[1] === 0x00)) {
-        throw new ELMError('O adaptador está funcionando, mas o carro não respondeu.\n\n' +
-          '• Confira se a ignição está ligada (painel aceso) ou o motor funcionando.\n' +
-          '• Confira se o adaptador está bem encaixado na tomada OBD.\n' +
-          '• Se continuar, o carro pode não ser compatível com OBD-II padrão.');
+      for (const c of ['ATE0', 'ATL0', 'ATS0', 'ATH0', 'ATAT1']) await this.send(c, 3000);
+      // Ignora a checagem de "keyword" da linha K (muitos carros japoneses respondem fora do padrão)
+      await this.send('ATKW0', 3000).catch(e => { if (e instanceof LinkLost) throw e; });
+      const v = await this.voltage();
+      this.batt = v;
+
+      progress('Procurando o protocolo automaticamente…');
+      let ok = await this.tryProtocol('0', 25000);
+      if (!ok) {
+        // Busca manual: linha K primeiro (carros antigos), depois CAN e J1850
+        for (const p of ['3', '4', '5', '6', '8', '7', '9', '1', '2']) {
+          progress(`Tentando ${PROTOCOLS[p]}…`);
+          if (await this.tryProtocol(p, ['3', '4', '5'].includes(p) ? 12000 : 8000)) { ok = true; break; }
+        }
+      }
+      if (!ok) {
+        const lowV = v !== null && v < 11;
+        throw new ELMError('O adaptador está funcionando, mas o carro não respondeu em nenhum protocolo OBD-II.\n\n' +
+          (v !== null ? `Tensão lida na tomada OBD: ${v.toFixed(1).replace('.', ',')} V${lowV ? ' (baixa, confira a ignição/bateria)' : ''}.\n\n` : '') +
+          '• Confira se a ignição está ligada (painel aceso). Tente também com o motor funcionando.\n' +
+          '• Confira se o adaptador está bem encaixado.\n' +
+          '• Se continuar, o carro pode não ter OBD-II padrão (só o protocolo próprio da marca).\n\n' +
+          'Toque em “Ver detalhes” e me mande um print da tela.');
       }
       const dp = await this.send('ATDPN', 3000);
       let num = (dp[0] || '?').trim().toUpperCase();
@@ -199,8 +226,10 @@
         await this.t.open();
         const elm = new ELM327(this.t);
         this.elm = elm;
-        this.emit('status', 'Procurando o protocolo do carro (até 25 s)…');
-        await elm.connect();
+        elm.log = (cmd, lines) => { if (this.logging) this.emit('log', cmd, lines); };
+        this.logging = true;
+        this.emit('status', 'Adaptador conectado. Falando com o carro…');
+        await elm.connect(msg => this.emit('status', msg));
         this.emit('status', 'Lendo a lista de dados que o carro fornece…');
         const sup = await elm.supportedPids();
         const info = { version: elm.version, protocol: elm.protocolName, supported: [...sup].sort((a, b) => a - b) };
@@ -209,6 +238,7 @@
           catch (e) { if (e instanceof LinkLost) throw e; info[key] = ''; }
         }
         this.emit('connected', info);
+        this.logging = false;
         this.submit('dtc');
         await this.loop(elm, sup);
       } catch (e) {

@@ -8,13 +8,13 @@
   const h2 = n => n.toString(16).toUpperCase().padStart(2, '0');
 
   class DemoTransport {
-    constructor() { this.onData = null; this.onClose = null; this.t0 = Date.now(); this.stored = ['P0420', 'P0171']; this.pending = ['P0300']; this.closed = false; }
+    constructor(mode) { this.mode = mode || 'ok'; this.proto = '0'; this.onData = null; this.onClose = null; this.t0 = Date.now(); this.stored = ['P0420', 'P0171']; this.pending = ['P0300']; this.closed = false; }
     open() { return new Promise(r => setTimeout(r, 600)); }
     close() { this.closed = true; }
     write(s) {
       const cmd = s.trim().toUpperCase().replace(/ /g, '');
       const resp = this.handle(cmd);
-      const delay = cmd === '0100' && Date.now() - this.t0 < 8000 ? 2500 : 30;
+      const delay = cmd === '0100' && Date.now() - this.t0 < 8000 ? (this.mode === 'ok' ? 2500 : 300) : 30;
       setTimeout(() => { if (!this.closed && this.onData) this.onData(resp + '\r\r>'); }, delay);
     }
     state() {
@@ -60,6 +60,10 @@
       return head + d.map(h2).join('');
     }
     handle(cmd) {
+      if (cmd.startsWith('ATSP')) this.proto = cmd.slice(4);
+      if (cmd.startsWith('01') && (this.mode === 'dead' || (this.mode === 'kline' && this.proto !== '3')))
+        return this.proto === '0' ? 'SEARCHING...\rUNABLE TO CONNECT' : (['3', '4', '5'].includes(this.proto) ? 'BUS INIT: ...ERROR' : 'NO DATA');
+      if (cmd === 'ATDPN' && this.mode === 'kline') return '3';
       if (cmd.startsWith('AT')) {
         if (['ATZ', 'ATI', 'ATWS'].includes(cmd)) return 'ELM327 v1.5';
         if (cmd === 'ATRV') return this.state().volt.toFixed(1) + 'V';
