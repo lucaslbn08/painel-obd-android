@@ -279,19 +279,31 @@
       if (data) batch[pid] = [data.map(x => OBD.hex2(x)).join(' '), OBD.decode(pid, data)];
     }
 
+    /* Prioridades de leitura (a tela ajusta conforme o que está sendo mostrado):
+       focus  – se definido, lê SÓ estes (teste de desempenho)
+       fast   – todo ciclo (rotação, velocidade, dados do consumo)
+       medium – revezados, mediumPerCycle por ciclo (o que aparece no painel)
+       slow   – todo o resto, slowPerCycle por ciclo */
     async loop(elm, sup) {
-      const fast = FAST.filter(p => sup.has(p));
-      const slow = [...sup].sort((a, b) => a - b).filter(p => !OBD.isBitmap(p) && !fast.includes(p) && p !== 0x02);
-      let idx = 0, lastV = 0;
+      let iM = 0, iS = 0, lastV = 0;
+      this.sup = sup;
       while (!this.stopped) {
         await this.runJobs(elm, sup);
+        const has = p => sup.has(p);
+        const fast = (this.focus || this.fast || FAST).filter(has);
+        const medium = this.focus ? [] : (this.medium || []).filter(p => has(p) && !fast.includes(p));
+        const slow = this.focus ? [] : [...sup].sort((a, b) => a - b).filter(p => !OBD.isBitmap(p) && p !== 0x02 && !fast.includes(p) && !medium.includes(p));
         const batch = {};
         for (const p of fast) { if (this.stopped) return; await this.read(elm, p, batch); }
+        for (let i = 0; i < Math.min(this.mediumPerCycle || 2, medium.length); i++) {
+          if (this.stopped) return;
+          await this.read(elm, medium[iM++ % medium.length], batch);
+        }
         for (let i = 0; i < Math.min(this.slowPerCycle, slow.length); i++) {
           if (this.stopped) return;
-          await this.read(elm, slow[idx++ % slow.length], batch);
+          await this.read(elm, slow[iS++ % slow.length], batch);
         }
-        if (Date.now() - lastV >= 2000) {
+        if (!this.focus && Date.now() - lastV >= 2000) {
           const v = await elm.voltage();
           if (v !== null) batch.V = [String(v), v];
           lastV = Date.now();
@@ -340,6 +352,24 @@
               }
             }
             this.emit('freeze', rows);
+          } else if (kind === 'report') {
+            const res = { stored: await elm.readDtcs('03'), pending: await elm.readDtcs('07'), permanent: await elm.readDtcs('0A') };
+            res.readiness = OBD.decodeReadiness(await elm.getPid(0x01));
+            const rows = [];
+            const d = await elm.getFreeze(0x02);
+            if (d && d.length >= 2 && (d[0] || d[1])) {
+              rows.push(['Falha que gerou o registro', DTC.decodeDtc(d[0], d[1]), '']);
+              for (const p of OBD.FREEZE_CANDIDATES) {
+                if (!sup.has(p)) continue;
+                const data = await elm.getFreeze(p);
+                if (data) rows.push([OBD.nameOf(p), OBD.fmtValue(p, OBD.decode(p, data)), OBD.unitOf(p)]);
+              }
+            }
+            this.emit('dtc', res, true); this.emit('freeze', rows, true); this.emit('report', res, rows);
+          } else if (kind === 'dtcquiet') {
+            const res = { stored: await elm.readDtcs('03'), pending: await elm.readDtcs('07'), permanent: await elm.readDtcs('0A') };
+            res.readiness = OBD.decodeReadiness(await elm.getPid(0x01));
+            this.emit('dtc', res, true);
           } else if (kind === 'readiness') {
             this.emit('readiness', OBD.decodeReadiness(await elm.getPid(0x01)));
           } else if (kind === 'raw') {

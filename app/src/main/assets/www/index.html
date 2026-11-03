@@ -18,6 +18,7 @@
 
   <main>
     <div class="progress" id="progress"><i></i></div>
+    <div id="alert-bar"></div>
 
     <!-- PAINEL -->
     <section class="pane active" id="dash-pane">
@@ -30,12 +31,7 @@
             <div class="lamp" id="l-bat">BATERIA</div>
             <div class="lamp" id="l-fuel">COMBUSTÍVEL</div>
           </div>
-          <div class="small">
-            <div class="gauge" id="g-ect"></div>
-            <div class="gauge" id="g-fuel"></div>
-            <div class="gauge" id="g-load"></div>
-            <div class="gauge" id="g-thr"></div>
-          </div>
+          <div class="small" id="small-gauges"></div>
         </div>
         <div class="gauge big g-spd" id="g-spd"></div>
         <div class="info">
@@ -47,6 +43,7 @@
           <div class="kv"><span>Leituras/s</span><b id="kv-rate" class="num">—</b></div>
         </div>
         <div class="tiles" id="tiles"></div>
+        <button class="btn custom-link" data-go="custom-pane">Personalizar painel</button>
       </div>
     </section>
 
@@ -66,6 +63,7 @@
         <button class="btn accent" id="btn-dtc">Ler falhas</button>
         <button class="btn danger" id="btn-clear">Apagar falhas</button>
         <button class="btn" id="btn-freeze">Congelamento de dados</button>
+        <button class="btn" id="btn-report">Relatório para o mecânico</button>
       </div>
       <div class="banner" id="mil-banner">Conecte ao carro para ler as falhas</div>
       <div class="section-title">Códigos de falha</div>
@@ -76,8 +74,80 @@
       <p class="hint">“Pendente” é uma falha detectada uma vez e ainda não confirmada. “Permanente” só some sozinha depois que o carro confirmar o conserto.</p>
     </section>
 
+    <!-- VIAGENS -->
+    <section class="pane" id="trips-pane">
+      <div class="card" id="trip-live"></div>
+      <div class="section-title">Este mês</div>
+      <div class="card" id="trip-month"></div>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">Viagens <button class="btn mini" id="btn-trips-csv">Exportar planilha</button></div>
+      <div class="card" id="trip-list"></div>
+      <p class="hint">O consumo é calculado pelos sensores do motor. Registre abastecimentos com tanque cheio na Garagem para o app comparar com o real e se ajustar.</p>
+    </section>
+
+    <!-- MAIS -->
+    <section class="pane" id="more-pane">
+      <div class="menu">
+        <button data-go="garage-pane"><i>⛽</i><div><b>Garagem</b><small>Abastecimentos, hodômetro e manutenções</small></div></button>
+        <button data-go="perf-pane"><i>⏱</i><div><b>Desempenho</b><small>0–100 km/h e retomadas</small></div></button>
+        <button id="btn-hud"><i>◐</i><div><b>Modo HUD</b><small>Reflete a velocidade no para-brisa</small></div></button>
+        <button data-go="custom-pane"><i>▦</i><div><b>Personalizar painel</b><small>Escolha os mostradores e blocos</small></div></button>
+        <button data-go="ready-pane"><i>✓</i><div><b>Prontidão</b><small>Autotestes de emissão</small></div></button>
+        <button data-go="veh-pane"><i>🚗</i><div><b>Veículo</b><small>Chassi, protocolo e dados suportados</small></div></button>
+        <button data-go="settings-pane"><i>⚙</i><div><b>Ajustes, alertas e backup</b><small>Motor, consumo, alertas, conexão e seus dados</small></div></button>
+        <button data-go="term-pane"><i>›_</i><div><b>Terminal</b><small>Comandos diretos ao adaptador</small></div></button>
+      </div>
+    </section>
+
+    <!-- GARAGEM -->
+    <section class="pane" id="garage-pane">
+      <button class="back" data-go="more-pane">‹ Mais</button>
+      <div class="card odo">
+        <div><label>Hodômetro</label><b id="odo-val" class="num">—</b><small id="odo-hint"></small></div>
+        <button class="btn" id="btn-odo">Ajustar</button>
+      </div>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">Manutenção <span><button class="btn mini" id="btn-maint-csv">Planilha</button> <button class="btn mini accent" id="btn-maint-add">Adicionar</button></span></div>
+      <div class="card" id="maint-list"></div>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">Abastecimentos <span><button class="btn mini" id="btn-fuel-csv">Planilha</button> <button class="btn mini accent" id="btn-fuel-add">Registrar</button></span></div>
+      <div id="calib-box"></div>
+      <div class="card" id="fuel-sum"></div>
+      <div class="card" id="fuel-list" style="margin-top:8px"></div>
+    </section>
+
+    <!-- DESEMPENHO -->
+    <section class="pane" id="perf-pane">
+      <button class="back" data-go="more-pane">‹ Mais</button>
+      <div class="seg" id="perf-types"><button data-t="0-60">0–60</button><button data-t="0-100" class="on">0–100</button><button data-t="60-100">60–100</button><button data-t="80-120">80–120</button></div>
+      <div class="card perf">
+        <div class="perf-speed"><b id="perf-speed" class="num">--</b><span>km/h</span></div>
+        <div class="perf-time num" id="perf-time">0,00</div><span class="perf-s">segundos</span>
+        <div class="perf-msg" id="perf-msg">Escolha o teste e toque em Preparar.</div>
+        <button class="btn accent big-btn" id="perf-go">Preparar</button>
+      </div>
+      <p class="hint">Faça só em local seguro e permitido. A precisão depende de quantas leituras por segundo o carro responde: durante o teste o app lê só a velocidade, para ficar o mais rápido possível.</p>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">Resultados <button class="btn mini" id="perf-clear">Apagar</button></div>
+      <div class="card" id="perf-list"></div>
+    </section>
+
+    <!-- PERSONALIZAR -->
+    <section class="pane" id="custom-pane">
+      <button class="back" data-go="more-pane">‹ Mais</button>
+      <p class="hint" style="margin-top:0">Rotação e velocidade ficam sempre nos mostradores grandes. Escolha o resto:</p>
+      <div class="section-title">Mostradores pequenos</div>
+      <div class="card form-card" id="custom-small"></div>
+      <div class="section-title">Blocos de dados</div>
+      <div class="card form-card" id="custom-tiles"></div>
+      <button class="btn" id="custom-reset" style="margin-top:12px">Restaurar padrão</button>
+    </section>
+
+    <!-- AJUSTES -->
+    <section class="pane" id="settings-pane">
+      <button class="back" data-go="more-pane">‹ Mais</button>
+      <div id="settings-body"></div>
+    </section>
+
     <!-- PRONTIDÃO -->
     <section class="pane" id="ready-pane">
+      <button class="back" data-go="more-pane">‹ Mais</button>
       <div class="actions" style="align-items:center">
         <button class="btn accent" id="btn-ready">Atualizar</button>
         <b id="ready-sum" style="font-size:13px"></b>
@@ -88,6 +158,7 @@
 
     <!-- VEÍCULO -->
     <section class="pane" id="veh-pane">
+      <button class="back" data-go="more-pane">‹ Mais</button>
       <div class="vgrid">
         <div class="vitem"><label>Chassi (VIN)</label><div id="v-vin">—</div></div>
         <div class="vitem"><label>Protocolo de comunicação</label><div id="v-proto">—</div></div>
@@ -104,6 +175,7 @@
 
     <!-- TERMINAL -->
     <section class="pane" id="term-pane">
+      <button class="back" data-go="more-pane">‹ Mais</button>
       <p class="hint" style="margin-top:0">Envie comandos direto ao adaptador (uso avançado).</p>
       <div class="chips">
         <button data-cmd="ATRV">ATRV tensão</button><button data-cmd="ATDP">ATDP protocolo</button>
@@ -118,9 +190,8 @@
     <button data-pane="dash-pane" class="active"><svg viewBox="0 0 24 24"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="M12 13l4-4"/><circle cx="12" cy="13.5" r="1.2"/></svg>Painel</button>
     <button data-pane="data-pane"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 4-7 5 6"/><path d="M3 21h18"/></svg>Dados</button>
     <button data-pane="dtc-pane"><svg viewBox="0 0 24 24"><path d="M5 10h2l1-2h6l1 2h3v3h1v-2h1v6h-1v-2h-1v3h-3l-2 2H9l-2-2H5z"/></svg>Falhas</button>
-    <button data-pane="ready-pane"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Prontidão</button>
-    <button data-pane="veh-pane"><svg viewBox="0 0 24 24"><path d="M5 16l1.5-5.5A2 2 0 0 1 8.4 9h7.2a2 2 0 0 1 1.9 1.5L19 16"/><rect x="3" y="16" width="18" height="4" rx="1.5"/><circle cx="7" cy="18" r=".6"/><circle cx="17" cy="18" r=".6"/></svg>Veículo</button>
-    <button data-pane="term-pane"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg>Terminal</button>
+    <button data-pane="trips-pane"><svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></svg>Viagens</button>
+    <button data-pane="more-pane"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>Mais</button>
   </nav>
 </div>
 
@@ -136,17 +207,44 @@
   </div>
 </div>
 
+<!-- Formulários -->
+<div class="overlay" id="form-wrap"><div class="sheet" id="form-body"></div></div>
+
+<!-- Relatório -->
+<div class="overlay dialog-wrap" id="report-wrap">
+  <div class="dialog report">
+    <h3>Relatório para o mecânico</h3>
+    <div class="report-img"><img id="report-img" alt="Relatório"></div>
+    <div class="actions"><button class="btn" id="report-close">Fechar</button><button class="btn accent" id="report-share">Compartilhar</button></div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-in">
+    <div id="hud-main" class="num">--</div>
+    <div id="hud-unit">km/h</div>
+    <div class="hud-track"><i id="hud-bar"></i></div>
+    <div id="hud-sub"></div>
+  </div>
+  <div class="hud-ctrl">
+    <button data-h="mirror">Espelhar</button><button data-h="main">Velocidade / Rotação</button><button data-h="exit">Sair</button>
+  </div>
+</div>
+
 <!-- Diálogo -->
 <div class="overlay dialog-wrap" id="dlg-wrap">
   <div class="dialog"><h3 id="dlg-title"></h3><p id="dlg-text"></p><input id="dlg-input" inputmode="decimal" autocomplete="off"><div class="actions" id="dlg-actions"></div></div>
 </div>
 <div id="toast"></div>
 
+<script src="core.js"></script>
 <script src="pids.js"></script>
 <script src="dtc.js"></script>
 <script src="elm.js"></script>
 <script src="demo.js"></script>
 <script src="gauges.js"></script>
 <script src="app.js"></script>
+<script src="features.js"></script>
 </body>
 </html>
