@@ -319,7 +319,13 @@
             res.readiness = OBD.decodeReadiness(await elm.getPid(0x01));
             this.emit('dtc', res);
           } else if (kind === 'clear') {
-            this.emit('cleared', await elm.clearDtcs());
+            // Algumas centrais só aceitam na 2ª ou 3ª tentativa com o motor funcionando
+            let r = 'sem';
+            for (let i = 0; i < 3 && r !== 'ok'; i++) {
+              if (i) await sleep(1200);
+              r = await elm.clearDtcs();
+            }
+            this.emit('cleared', r);
             await sleep(500);
             this.submit('dtc');
           } else if (kind === 'freeze') {

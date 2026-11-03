@@ -159,8 +159,14 @@
       case 'dtc': onDtc(a); break;
       case 'cleared':
         if (a === 'ok') { toast('Falhas apagadas.'); $('ff-list').innerHTML = '<div class="empty">Sem dados</div>'; }
-        else if (a === 'motor') dialog('A central recusou', 'A central do motor não aceitou apagar agora. Confira se o motor está desligado e a ignição ligada (painel aceso) e tente de novo.');
-        else dialog('Sem confirmação', 'O carro não confirmou que apagou as falhas. Toque em “Ler falhas” para conferir; se ainda aparecerem, desligue o motor, deixe a ignição ligada e tente de novo.');
+        else if (S.clearWithEngine)
+          dialog('A central recusou com o motor ligado',
+            (a === 'motor' ? 'A central do motor respondeu “condições incorretas”: ela tem uma proteção que bloqueia apagar falhas com o motor funcionando.'
+              : 'O carro não confirmou que apagou as falhas (3 tentativas com o motor ligado).') +
+            '\n\nEssa trava fica dentro da central do carro, então nenhum app consegue passar por cima dela pelo OBD-II.\n\nQuer apagar desligando o motor só por alguns segundos? O app espera, apaga e depois é só dar partida de novo.',
+            [['Agora não', ''], ['Sim, vou desligar', 'accent']]).then(i => { if (i === 1) waitEngineOffAndClear(); });
+        else if (a === 'motor') dialog('A central recusou', 'A central do motor não aceitou apagar agora. Confira se a ignição está ligada (painel aceso) e tente de novo.');
+        else dialog('Sem confirmação', 'O carro não confirmou que apagou as falhas. Toque em “Ler falhas” para conferir e tente de novo.');
         break;
       case 'car':
         if (a) { setStatus(S.demo ? 'Demonstração' : 'Conectado', 'var(--ok)'); toast('Comunicação com o carro restabelecida'); }
@@ -227,7 +233,7 @@
       if (S.pane === 'data-pane') updateRow(pid);
     }
     updateDash();
-    if (S.waitEngineOff && typeof S.values[0x0C] === 'number' && batch[0x0C] && !engineRunning()) { closeDialog(); confirmClear(); }
+    if (S.waitEngineOff && typeof S.values[0x0C] === 'number' && batch[0x0C] && !engineRunning()) { closeDialog(); confirmClear(true); }
     if (S.pane === 'data-pane' && S.chartPid != null && batch[S.chartPid]) drawChart();
     if (S.rec && Date.now() - S.rec.last >= 1000) writeRecord();
   }
@@ -358,27 +364,29 @@
   $('btn-dtc').onclick = () => job('dtc');
   $('btn-freeze').onclick = () => job('freeze');
   $('btn-ready').onclick = () => job('readiness');
-  // A maioria das centrais recusa apagar falhas com o motor funcionando.
-  // Então o app pede para desligar o motor (mantendo a ignição ligada) e só apaga quando a rotação zerar.
+  // Tenta apagar com o motor funcionando (3 tentativas). Se a central recusar, oferece o
+  // caminho alternativo: desligar o motor mantendo a ignição ligada, e o app apaga sozinho na hora.
   const engineRunning = () => (num(0x0C) || 0) > 250;
-  async function confirmClear() {
+  async function confirmClear(afterOff) {
     S.waitEngineOff = false;
-    const r = await dialog('Apagar falhas?', 'Motor desligado e ignição ligada: tudo certo.\n\nIsso apaga os códigos de falha, o congelamento de dados e zera os monitores de prontidão.\n\n• Se o defeito continuar, a luz de injeção volta a acender.\n• Os monitores de prontidão voltam a “Incompleto” até o carro rodar um pouco.', [['Cancelar', ''], ['Apagar', 'danger']]);
+    const r = await dialog('Apagar falhas?', (afterOff ? 'Motor desligado e ignição ligada: tudo certo.\n\n' : '') + 'Isso apaga os códigos de falha, o congelamento de dados e zera os monitores de prontidão.\n\n• Se o defeito continuar, a luz de injeção volta a acender.\n• Os monitores de prontidão voltam a “Incompleto” até o carro rodar um pouco.', [['Cancelar', ''], ['Apagar', 'danger']]);
     if (r !== 1) return;
-    if (engineRunning()) { toast('O motor foi ligado de novo. Desligue para apagar.'); return; }
+    S.clearWithEngine = engineRunning();
     job('clear');
   }
-  $('btn-clear').onclick = async () => {
+  $('btn-clear').onclick = () => {
     if (!S.connected) { toast('Conecte ao carro primeiro'); return; }
-    if (!engineRunning()) { confirmClear(); return; }
+    confirmClear(false);
+  };
+  async function waitEngineOffAndClear() {
     S.waitEngineOff = true;
     const r = await dialog('Desligue o motor',
-      'Para apagar as falhas o motor precisa estar DESLIGADO, com a ignição LIGADA:\n\n' +
+      'A central do seu carro só aceita apagar com o motor DESLIGADO e a ignição LIGADA:\n\n' +
       '1. Gire a chave para desligar o motor.\n2. Gire de novo só até acender o painel (sem dar partida).\n\n' +
       'O app vai perceber sozinho e continuar. O adaptador pode perder a comunicação por alguns segundos, é normal.',
       [['Cancelar', '']]);
     if (r === 0) S.waitEngineOff = false;
-  };
+  }
 
   function onDtc(res) {
     const html = [];

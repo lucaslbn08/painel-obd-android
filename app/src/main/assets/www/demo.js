@@ -88,7 +88,7 @@
       if (cmd === '03') return this.dtcResp('43', this.stored);
       if (cmd === '07') return this.dtcResp('47', this.pending);
       if (cmd === '0A') return '4A00';
-      if (cmd === '04' && this.state().rpm > 250) return '7F0422';
+      if (cmd === '04' && this.state().rpm > 250 && window.__demoRejectRunning) return '7F0422';
       if (cmd === '04') { this.stored = []; this.pending = []; return '44'; }
       if (cmd === '0902') {
         const hex = '490201' + [...VIN].map(c => h2(c.charCodeAt(0))).join('');
