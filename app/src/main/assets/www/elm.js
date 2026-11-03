@@ -145,6 +145,16 @@
       if (num.startsWith('A') && num.length > 1) num = num.slice(1);
       this.protocolNum = num;
       this.protocolName = PROTOCOLS[num] || `Protocolo ${num}`;
+      // Em rede CAN vários módulos (motor, câmbio, ABS) respondem juntos e alguns valores vinham
+      // de outro módulo. Aqui o app passa a perguntar só para a central do motor.
+      const phys = { '6': ['7E0', '7DF'], '8': ['7E0', '7DF'], '7': ['DA10F1', 'DB33F1'], '9': ['DA10F1', 'DB33F1'] }[num];
+      if (phys) {
+        await this.send('ATSH' + phys[0], 3000);
+        let okPhys = false;
+        try { okPhys = ELM327.ok0100(await this.request('0100', 5000)); } catch (e) { if (e instanceof LinkLost) throw e; }
+        if (!okPhys) await this.send('ATSH' + phys[1], 3000);
+        else this.protocolName += ' · central do motor';
+      }
     }
 
     async getPid(pid) {
@@ -183,7 +193,13 @@
       return codes;
     }
 
-    async clearDtcs() { return (await this.request('04', 10000)).some(m => m.length && m[0] === 0x44); }
+    /** 'ok' = apagou · 'motor' = central recusou (motor ligado/condições) · 'sem' = sem confirmação */
+    async clearDtcs() {
+      const msgs = await this.request('04', 10000);
+      if (msgs.some(m => m.length && m[0] === 0x44)) return 'ok';
+      if (msgs.some(m => m.length >= 2 && m[0] === 0x7F && m[1] === 0x04)) return 'motor';
+      return 'sem';
+    }
 
     async getFreeze(pid) {
       for (const m of await this.request('02' + OBD.hex2(pid) + '00'))
@@ -215,7 +231,7 @@
   class Engine {
     constructor(transport, emit) {
       this.t = transport; this.emit = emit; this.jobs = []; this.stopped = false;
-      this.slowPerCycle = 2; this.fails = 0;
+      this.slowPerCycle = 2; this.fails = 0; this.nodata = 0; this.carLost = false;
     }
     stop() { this.stopped = true; this.t.close(); }
     submit(...job) { this.jobs.push(job); }
@@ -254,10 +270,12 @@
       try { data = await elm.getPid(pid); }
       catch (e) {
         if (e instanceof LinkLost) throw e;
-        if (++this.fails >= 6) throw new ELMError('A comunicação com o adaptador foi perdida.\n\nConfira se a ignição continua ligada e se o adaptador está encaixado.');
+        this.fails++;
         return;
       }
-      this.fails = 0;
+      if (data === null) { this.nodata = (this.nodata || 0) + 1; return; }
+      this.fails = 0; this.nodata = 0;
+      if (this.carLost) { this.carLost = false; this.emit('car', true); }
       if (data) batch[pid] = [data.map(x => OBD.hex2(x)).join(' '), OBD.decode(pid, data)];
     }
 
@@ -277,6 +295,15 @@
           const v = await elm.voltage();
           if (v !== null) batch.V = [String(v), v];
           lastV = Date.now();
+        }
+        if (fast.length && (this.fails >= 4 || this.nodata >= 8) && !this.carLost) {
+          this.carLost = true; this.emit('car', false);
+        }
+        if (this.carLost) {
+          // Carro sem resposta: tenta reabrir a comunicação a cada poucos segundos sem derrubar o adaptador
+          await sleep(2500);
+          try { await elm.send('ATPC', 3000); await elm.request('0100', 12000); } catch (e) { if (e instanceof LinkLost) throw e; }
+          this.fails = 0; this.nodata = 0;
         }
         if (Object.keys(batch).length) this.emit('data', batch, Date.now());
         else await sleep(250);

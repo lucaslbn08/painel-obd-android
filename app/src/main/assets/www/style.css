@@ -181,3 +181,7 @@ nav button.active svg { filter: drop-shadow(0 0 6px rgba(31, 212, 255, .5)); }
   header .btn { padding: 9px 11px; }
   .lamp { font-size: 9.5px; letter-spacing: 0; }
 }
+
+#dlg-input { display: none; width: 100%; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 12px; font: 700 18px Roboto, sans-serif; margin: -4px 0 16px; outline: none; user-select: text; -webkit-user-select: text; }
+#dlg-input:focus { border-color: var(--accent); }
+.tile:first-child { cursor: pointer; }

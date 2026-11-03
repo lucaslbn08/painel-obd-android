@@ -19,6 +19,8 @@
     }
     state() {
       const t = (Date.now() - this.t0) / 1000;
+      if (window.__demoEngineOff) return { t, speed: 0, rpm: 0, thr: 0, load: 0, ect: 88, iat: 31, maf: 0, map: 95, adv: 0,
+        stft: 0, ltft: 3.1, fuel: 60, volt: 12.5 };
       const speed = Math.max(0, 62 + 58 * Math.sin(t / 11) + 6 * Math.sin(t / 2.3));
       const gear = speed > 3 ? speed * 34 : 0;
       const rpm = Math.min(6900, 820 + gear * (1 + 0.35 * Math.sin(t / 3.1)) + rnd(-25, 25));
@@ -66,7 +68,7 @@
       if (cmd === 'ATDPN' && this.mode === 'kline') return '3';
       if (cmd.startsWith('AT')) {
         if (['ATZ', 'ATI', 'ATWS'].includes(cmd)) return 'ELM327 v1.5';
-        if (cmd === 'ATRV') return this.state().volt.toFixed(1) + 'V';
+        if (cmd === 'ATRV') return (this.state().volt - 0.6).toFixed(1) + 'V'; // clone lendo abaixo do real
         if (cmd === 'ATDPN') return 'A6';
         if (cmd === 'ATDP') return 'AUTO, ISO 15765-4 (CAN 11/500)';
         return 'OK';
@@ -86,6 +88,7 @@
       if (cmd === '03') return this.dtcResp('43', this.stored);
       if (cmd === '07') return this.dtcResp('47', this.pending);
       if (cmd === '0A') return '4A00';
+      if (cmd === '04' && this.state().rpm > 250) return '7F0422';
       if (cmd === '04') { this.stored = []; this.pending = []; return '44'; }
       if (cmd === '0902') {
         const hex = '490201' + [...VIN].map(c => h2(c.charCodeAt(0))).join('');

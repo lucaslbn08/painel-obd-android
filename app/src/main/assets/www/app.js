@@ -58,18 +58,25 @@
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
     clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms);
   }
-  function dialog(title, text, buttons = [['OK', 'accent']]) {
+  let dlgDone = null;
+  function dialog(title, text, buttons = [['OK', 'accent']], input) {
+    if (dlgDone) dlgDone(-1);
     return new Promise(res => {
       $('dlg-title').textContent = title; $('dlg-text').textContent = text;
+      const inp = $('dlg-input');
+      inp.style.display = input ? 'block' : 'none';
+      if (input) { inp.value = input.value || ''; inp.placeholder = input.placeholder || ''; setTimeout(() => inp.focus(), 100); }
       const a = $('dlg-actions'); a.innerHTML = '';
+      dlgDone = i => { dlgDone = null; $('dlg-wrap').classList.remove('show'); res(input ? { i, value: inp.value } : i); };
       buttons.forEach(([label, kind], i) => {
         const b = document.createElement('button'); b.className = 'btn ' + (kind || ''); b.textContent = label;
-        b.onclick = () => { $('dlg-wrap').classList.remove('show'); res(i); };
+        b.onclick = () => dlgDone && dlgDone(i);
         a.append(b);
       });
       $('dlg-wrap').classList.add('show');
     });
   }
+  const closeDialog = () => { if (dlgDone) dlgDone(-1); };
   function setStatus(text, color) {
     const s = $('status'); s.querySelector('span').textContent = text;
     s.querySelector('i').style.background = color; s.style.color = color;
@@ -150,7 +157,15 @@
       case 'connected': onConnected(a); break;
       case 'data': onData(a, b); break;
       case 'dtc': onDtc(a); break;
-      case 'cleared': toast(a ? 'Falhas apagadas.' : 'O carro não confirmou a limpeza.'); $('ff-list').innerHTML = '<div class="empty">Sem dados</div>'; break;
+      case 'cleared':
+        if (a === 'ok') { toast('Falhas apagadas.'); $('ff-list').innerHTML = '<div class="empty">Sem dados</div>'; }
+        else if (a === 'motor') dialog('A central recusou', 'A central do motor não aceitou apagar agora. Confira se o motor está desligado e a ignição ligada (painel aceso) e tente de novo.');
+        else dialog('Sem confirmação', 'O carro não confirmou que apagou as falhas. Toque em “Ler falhas” para conferir; se ainda aparecerem, desligue o motor, deixe a ignição ligada e tente de novo.');
+        break;
+      case 'car':
+        if (a) { setStatus(S.demo ? 'Demonstração' : 'Conectado', 'var(--ok)'); toast('Comunicação com o carro restabelecida'); }
+        else setStatus('Carro sem resposta…', 'var(--warn)');
+        break;
       case 'freeze': onFreeze(a); break;
       case 'readiness': onReadiness(a); toast('Monitores atualizados.'); break;
       case 'raw': termWrite((b.join('\n') || '(sem resposta)') + '\n\n'); break;
@@ -180,7 +195,7 @@
     $('pid-list').innerHTML = S.supported.map(p => `0x${OBD.hex2(p)}  ${esc(OBD.nameOf(p))}`).join('<br>');
     $('data-count').textContent = `${S.supported.length} parâmetros · toque num deles para ver o gráfico`;
     const rows = S.supported.slice().sort((a, b) => OBD.groupOf(a).localeCompare(OBD.groupOf(b)) || a - b);
-    $('data-list').innerHTML = rows.map(p => `<div class="row" data-pid="${p}"><div class="n"><b>${esc(OBD.nameOf(p))}</b><small>${esc(OBD.groupOf(p))} · 0x${OBD.hex2(p)}</small></div><div class="val"><b class="num" id="dv-${p}">…</b><span class="u">${esc(OBD.unitOf(p))}</span><small class="num" id="dm-${p}"></small></div></div>`).join('');
+    $('data-list').innerHTML = `<div class="row" data-pid="V"><div class="n"><b>Tensão na tomada OBD (adaptador)</b><small>Elétrica · ATRV${vcal !== 1 ? ' · calibrada' : ''}</small></div><div class="val"><b class="num" id="dv-V">…</b><span class="u">V</span><small class="num" id="dm-V"></small></div></div>` + rows.map(p => `<div class="row" data-pid="${p}"><div class="n"><b>${esc(OBD.nameOf(p))}</b><small>${esc(OBD.groupOf(p))} · 0x${OBD.hex2(p)}</small></div><div class="val"><b class="num" id="dv-${p}">…</b><span class="u">${esc(OBD.unitOf(p))}</span><small class="num" id="dm-${p}"></small></div></div>`).join('');
     const need = { iat: [0x0F], map: [0x0B], maf: [0x10], adv: [0x0E], stft: [0x06], ltft: [0x07], o2: [0x14, 0x24],
       oil: [0x5C], amb: [0x46], eth: [0x52], cons: [0x5E, 0x10] };
     for (const k in need) if (!need[k].some(p => S.supported.includes(p))) tile(k, 'n/d', 'none');
@@ -209,15 +224,22 @@
         const mm = S.minmax[pid];
         S.minmax[pid] = mm ? [Math.min(mm[0], val), Math.max(mm[1], val)] : [val, val];
       }
-      if (pid !== 'V' && S.pane === 'data-pane') updateRow(pid);
+      if (S.pane === 'data-pane') updateRow(pid);
     }
     updateDash();
+    if (S.waitEngineOff && typeof S.values[0x0C] === 'number' && batch[0x0C] && !engineRunning()) { closeDialog(); confirmClear(); }
     if (S.pane === 'data-pane' && S.chartPid != null && batch[S.chartPid]) drawChart();
     if (S.rec && Date.now() - S.rec.last >= 1000) writeRecord();
   }
 
   function updateRow(pid) {
     const v = $('dv-' + pid); if (!v) return;
+    if (pid === 'V') {
+      const x = atrv(), mm = S.minmax.V;
+      v.textContent = x == null ? '—' : fmt(x, 2);
+      if (mm) $('dm-V').textContent = `mín ${fmt(mm[0] * vcal, 2)} · máx ${fmt(mm[1] * vcal, 2)}`;
+      return;
+    }
     v.textContent = OBD.fmtValue(pid, S.values[pid], S.raw[pid]);
     const mm = S.minmax[pid];
     if (mm) $('dm-' + pid).textContent = `mín ${OBD.fmtValue(pid, mm[0])} · máx ${OBD.fmtValue(pid, mm[1])}`;
@@ -235,14 +257,52 @@
     return [fmt(lph, 2), 'L/h'];
   }
 
+  /* ---------- bateria ---------- */
+  // O ATRV é medido pelo próprio adaptador; nos clones baratos costuma vir 0,3 a 0,8 V abaixo do real
+  // (há um diodo de proteção no caminho). Por isso: 1) usa a tensão da central (PID 42) quando existe;
+  // 2) senão usa o ATRV com a calibração que o usuário fizer comparando com um multímetro.
+  let vcal = parseFloat(store.get('vcal')) || 1;
+  const atrv = () => (typeof S.values.V === 'number' ? S.values.V * vcal : null);
+  function battery() {
+    const ecu = num(0x42);
+    if (ecu != null && ecu > 5) return [ecu, 'central'];
+    const v = atrv();
+    return v != null ? [v, vcal !== 1 ? 'calibrada' : 'adaptador'] : [null, ''];
+  }
+  T.bat.el.addEventListener('click', async () => {
+    const raw = typeof S.values.V === 'number' ? S.values.V : null;
+    if (raw == null) { toast('Conecte ao adaptador para calibrar a tensão'); return; }
+    const src = battery()[1];
+    const r = await dialog('Calibrar tensão da bateria',
+      `Leitura do adaptador agora: ${fmt(raw * vcal, 2)} V${vcal !== 1 ? ' (já calibrada)' : ''}.\n` +
+      (src === 'central' ? 'Obs.: este carro informa a tensão pela central, e é ela que aparece no painel. A calibração vale só para a leitura do adaptador.\n' : '') +
+      '\nMeça a bateria com um multímetro (nos polos da bateria) e digite o valor real, no mesmo momento, sem desligar nada:',
+      [['Cancelar', ''], ['Zerar', ''], ['Salvar', 'accent']], { placeholder: 'Ex.: 12,6', value: '' });
+    if (r.i === 1) { vcal = 1; store.set('vcal', '1'); toast('Calibração removida'); }
+    if (r.i === 2) {
+      const real = parseFloat(String(r.value).replace(',', '.'));
+      if (!(real > 8 && real < 17)) { toast('Valor inválido. Digite algo entre 8 e 17 V.'); return; }
+      vcal = real / raw; store.set('vcal', String(vcal));
+      toast(`Calibrado: correção de ${(real - raw >= 0 ? '+' : '') + fmt(real - raw, 2)} V`);
+    }
+    updateDash();
+  });
+
   function updateDash() {
     const rpm = num(0x0C), spd = num(0x0D), ect = num(0x05, 0x67), fuel = num(0x2F);
     G.rpm.set(rpm); G.spd.set(spd); G.ect.set(ect); G.fuel.set(fuel);
-    G.load.set(num(0x04, 0x43)); G.thr.set(num(0x49, 0x5A, 0x11, 0x45));
-    const volt = num('V', 0x42);
+    // Acelerador: posição RELATIVA (0 % = pé fora), não a absoluta, que já marca 12–20 % em repouso
+    G.load.set(num(0x04, 0x43)); G.thr.set(num(0x5A, 0x45, 0x11));
+    const [volt, vsrc] = battery();
     if (volt != null) {
-      const st = volt < 11.8 || volt > 15.2 ? 'danger' : ((rpm || 0) > 500 && volt < 13 ? 'warn' : 'ok');
-      tile('bat', fmt(volt), st); lamp('l-bat', { danger: 'on', warn: 'warn', ok: 'off' }[st]);
+      const running = (rpm || 0) > 400;
+      // motor ligado: alternador deve dar 13,2–14,8 V · motor desligado: bateria boa 12,2–12,9 V
+      const st = volt > 15.2 ? 'danger'
+        : running ? (volt < 12.5 ? 'danger' : volt < 13.2 ? 'warn' : 'ok')
+        : (volt < 11.8 ? 'danger' : volt < 12.2 ? 'warn' : 'ok');
+      tile('bat', fmt(volt), st);
+      T.bat.el.querySelector('label').textContent = `Bateria · ${vsrc}`;
+      lamp('l-bat', { danger: 'on', warn: 'warn', ok: 'off' }[st]);
     }
     const t = (k, v, d = 0, warn) => { if (v != null) tile(k, fmt(v, d), warn && warn(v) ? 'warn' : 'normal'); };
     t('iat', num(0x0F, 0x68)); t('map', num(0x0B)); t('maf', num(0x10), 1); t('adv', num(0x0E), 1);
@@ -275,15 +335,16 @@
     const r = e.target.closest('.row'); if (!r) return;
     document.querySelectorAll('#data-list .row.sel').forEach(x => x.classList.remove('sel'));
     r.classList.add('sel');
-    S.chartPid = Number(r.dataset.pid);
+    S.chartPid = r.dataset.pid === 'V' ? 'V' : Number(r.dataset.pid);
     drawChart(true);
   });
   function drawChart(force) {
     if (!force && Date.now() - S.chartLast < 400) return;
     S.chartLast = Date.now();
     if (S.chartPid == null) { chart.set('', '', null); return; }
-    chart.set(OBD.nameOf(S.chartPid), OBD.unitOf(S.chartPid), S.history[S.chartPid]);
-    if (force) S.supported.forEach(updateRow);
+    if (S.chartPid === 'V') chart.set('Tensão na tomada OBD', 'V', (S.history.V || []).map(([t, x]) => [t, x * vcal]));
+    else chart.set(OBD.nameOf(S.chartPid), OBD.unitOf(S.chartPid), S.history[S.chartPid]);
+    if (force) { S.supported.forEach(updateRow); updateRow('V'); }
   }
   $('btn-minmax').onclick = () => { S.minmax = {}; document.querySelectorAll('[id^="dm-"]').forEach(x => (x.textContent = '')); toast('Mínimos e máximos zerados'); };
 
@@ -297,10 +358,26 @@
   $('btn-dtc').onclick = () => job('dtc');
   $('btn-freeze').onclick = () => job('freeze');
   $('btn-ready').onclick = () => job('readiness');
+  // A maioria das centrais recusa apagar falhas com o motor funcionando.
+  // Então o app pede para desligar o motor (mantendo a ignição ligada) e só apaga quando a rotação zerar.
+  const engineRunning = () => (num(0x0C) || 0) > 250;
+  async function confirmClear() {
+    S.waitEngineOff = false;
+    const r = await dialog('Apagar falhas?', 'Motor desligado e ignição ligada: tudo certo.\n\nIsso apaga os códigos de falha, o congelamento de dados e zera os monitores de prontidão.\n\n• Se o defeito continuar, a luz de injeção volta a acender.\n• Os monitores de prontidão voltam a “Incompleto” até o carro rodar um pouco.', [['Cancelar', ''], ['Apagar', 'danger']]);
+    if (r !== 1) return;
+    if (engineRunning()) { toast('O motor foi ligado de novo. Desligue para apagar.'); return; }
+    job('clear');
+  }
   $('btn-clear').onclick = async () => {
     if (!S.connected) { toast('Conecte ao carro primeiro'); return; }
-    const r = await dialog('Apagar falhas?', 'Isso apaga os códigos de falha, o congelamento de dados e zera os monitores de prontidão.\n\n• Se o defeito continuar, a luz de injeção volta a acender.\n• Faça com a ignição ligada e, de preferência, o motor desligado.', [['Cancelar', ''], ['Apagar', 'danger']]);
-    if (r === 1) job('clear');
+    if (!engineRunning()) { confirmClear(); return; }
+    S.waitEngineOff = true;
+    const r = await dialog('Desligue o motor',
+      'Para apagar as falhas o motor precisa estar DESLIGADO, com a ignição LIGADA:\n\n' +
+      '1. Gire a chave para desligar o motor.\n2. Gire de novo só até acender o painel (sem dar partida).\n\n' +
+      'O app vai perceber sozinho e continuar. O adaptador pode perder a comunicação por alguns segundos, é normal.',
+      [['Cancelar', '']]);
+    if (r === 0) S.waitEngineOff = false;
   };
 
   function onDtc(res) {
@@ -375,7 +452,7 @@
   function writeRecord() {
     S.rec.last = Date.now();
     const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
-    S.rec.lines.push([stamp(now), cell(S.values.V), ...S.rec.cols.map(p => cell(S.values[p]))].join(';'));
+    S.rec.lines.push([stamp(now), cell(atrv()), ...S.rec.cols.map(p => cell(S.values[p]))].join(';'));
   }
   function stopRecord() {
     const rec = S.rec; S.rec = null;
