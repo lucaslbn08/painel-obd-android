@@ -5,7 +5,9 @@
   const BT = window.AndroidBT || null;
   const fmt = (v, d = 1) => (v == null || isNaN(v) ? '—' : Number(v).toFixed(d).replace('.', ','));
   const fmtInt = v => (v == null || isNaN(v) ? '—' : Math.round(v).toLocaleString('pt-BR'));
-  const money = v => (v == null || isNaN(v) ? '—' : 'R$ ' + Number(v).toFixed(2).replace('.', ','));
+  const money = v => (v == null || isNaN(v) ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  // versão curta para os resumos: sem centavos a partir de R$ 1.000
+  const moneyShort = v => (v == null || isNaN(v) ? '—' : Math.abs(v) >= 1000 ? 'R$ ' + Math.round(v).toLocaleString('pt-BR') : money(v));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const parseNum = s => {
     s = String(s == null ? '' : s).trim().replace(/\s/g, '');
@@ -197,6 +199,6 @@
   }
   window.Files = Files;
 
-  window.U = { $, BT, fmt, fmtInt, money, esc, parseNum, today, dateBR, dur, store, settings, saveSettings, DEFAULTS,
+  window.U = { $, BT, fmt, fmtInt, money, moneyShort, esc, parseNum, today, dateBR, dur, store, settings, saveSettings, DEFAULTS,
     on, emit, toast, hideToast, dialog, closeDialog, form, show, onBack, get pane() { return pane; }, android, beep };
 })();

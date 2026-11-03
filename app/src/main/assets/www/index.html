@@ -105,12 +105,17 @@
         <div><label>Hodômetro</label><b id="odo-val" class="num">—</b><small id="odo-hint"></small></div>
         <button class="btn" id="btn-odo">Ajustar</button>
       </div>
+      <button class="btn import-btn" id="btn-import">Importar dados do Drivvo (arquivo CSV)</button>
+      <input type="file" id="import-file" accept=".csv,text/csv,text/comma-separated-values,text/plain,*/*" hidden>
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">Manutenção <span><button class="btn mini" id="btn-maint-csv">Planilha</button> <button class="btn mini accent" id="btn-maint-add">Adicionar</button></span></div>
       <div class="card" id="maint-list"></div>
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">Abastecimentos <span><button class="btn mini" id="btn-fuel-csv">Planilha</button> <button class="btn mini accent" id="btn-fuel-add">Registrar</button></span></div>
       <div id="calib-box"></div>
       <div class="card" id="fuel-sum"></div>
       <div class="card" id="fuel-list" style="margin-top:8px"></div>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">Serviços e despesas <span><button class="btn mini" id="btn-svc-csv">Planilha</button> <button class="btn mini accent" id="btn-svc-add">Registrar</button></span></div>
+      <div class="card" id="svc-sum"></div>
+      <div class="card" id="svc-list" style="margin-top:8px"></div>
     </section>
 
     <!-- DESEMPENHO -->
@@ -244,6 +249,7 @@
 <script src="elm.js"></script>
 <script src="demo.js"></script>
 <script src="gauges.js"></script>
+<script src="importer.js"></script>
 <script src="app.js"></script>
 <script src="features.js"></script>
 </body>

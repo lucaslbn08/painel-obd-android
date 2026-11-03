@@ -1,7 +1,7 @@
 /* Painel OBD – viagens, garagem (abastecimentos e manutenção), alertas, desempenho, HUD,
    relatório para o mecânico, personalização, ajustes, exportação e backup. */
 (function () {
-  const { $, fmt, fmtInt, money, esc, parseNum, today, dateBR, dur, store, settings, saveSettings, DEFAULTS,
+  const { $, fmt, fmtInt, money, moneyShort, esc, parseNum, today, dateBR, dur, store, settings, saveSettings, DEFAULTS,
     on, toast, dialog, form, show, onBack, android, beep } = U;
   const ts2date = t => { const d = new Date(t); return new Date(d - d.getTimezoneOffset() * 60000).toISOString(); };
   const dmy = t => dateBR(ts2date(t));
@@ -92,7 +92,7 @@
         <div><b class="num">${month.length}</b><span>viagens</span></div>
         <div><b class="num">${fl > 0.05 ? fmt(fkm / fl, 1) : '—'}</b><span>km/L médio</span></div>
         <div><b class="num">${fl > 0 ? fmt(fl, 1) : '—'}</b><span>litros (est.)</span></div>
-        <div><b class="num">${price && fl > 0 ? money(fl * price) : '—'}</b><span>gasto estimado</span></div>
+        <div><b class="num">${price && fl > 0 ? moneyShort(fl * price) : '—'}</b><span>gasto estimado</span></div>
         <div><b class="num">${Odo.value() != null ? fmtInt(Odo.value()) : '—'}</b><span>hodômetro</span></div>
       </div>`;
       $('trip-list').innerHTML = l.length ? l.slice(0, 100).map(t => `
@@ -193,15 +193,100 @@
       $('fuel-sum').innerHTML = `<div class="stats">
         <div><b class="num">${totL > 0 ? fmt(totKm / totL, 1) : '—'}</b><span>km/L real</span></div>
         <div><b class="num">${costKm != null ? money(costKm) : '—'}</b><span>por km</span></div>
-        <div><b class="num">${money(monthCost)}</b><span>gasto no mês</span></div>
+        <div><b class="num">${moneyShort(monthCost)}</b><span>gasto no mês</span></div>
       </div>`;
       $('fuel-list').innerHTML = f.length ? f.slice().reverse().slice(0, 100).map(e => `
         <div class="row fuel" data-id="${e.id}"><div class="n"><b>${dateBR(e.date)} · ${fmtInt(e.km)} km</b>
-          <small>${fmt(e.liters, 2)} L · ${money(e.price)}/L · ${esc((App.FUELS[e.fuel] || {}).label || e.fuel)}${e.full ? ' · cheio' : ' · parcial'}</small></div>
+          <small>${fmt(e.liters, 2)} L · ${money(e.price)}/L · ${esc(e.fuelName || (App.FUELS[e.fuel] || {}).label || e.fuel)}${e.full ? ' · cheio' : ' · parcial'}${e.station ? ' · ' + esc(e.station) : ''}</small></div>
           <div class="val"><b class="num">${money(e.total)}</b><small class="num">${st[e.id] ? fmt(st[e.id].kml, 1) + ' km/L' : ''}</small></div></div>`).join('')
         : '<div class="empty">Registre os abastecimentos para saber o consumo real e o custo por km.<br><small>Para calcular o consumo, encha o tanque e marque “Tanque cheio”.</small></div>';
       renderCalib(st);
+      renderServices();
     }
+
+    /* ---------- serviços e despesas (histórico) ---------- */
+    const services = () => store.json('services', []).sort((a, b) => b.date.localeCompare(a.date) || b.km - a.km);
+    function renderServices() {
+      const l = services(), year = String(new Date().getFullYear());
+      const yearSum = l.filter(x => x.date.startsWith(year)).reduce((s, x) => s + (x.total || 0), 0);
+      const fuelYear = fuels().filter(x => x.date.startsWith(year)).reduce((s, x) => s + (x.total || 0), 0);
+      $('svc-sum').innerHTML = `<div class="stats">
+        <div><b class="num">${moneyShort(yearSum)}</b><span>serviços em ${year}</span></div>
+        <div><b class="num">${moneyShort(fuelYear)}</b><span>combustível em ${year}</span></div>
+        <div><b class="num">${moneyShort(yearSum + fuelYear)}</b><span>total em ${year}</span></div></div>`;
+      $('svc-list').innerHTML = l.length ? l.slice(0, 150).map(x => `
+        <div class="row svc" data-id="${x.id}"><div class="n"><b>${esc(x.desc)}</b>
+          <small>${dateBR(x.date)}${x.km != null ? ' · ' + fmtInt(x.km) + ' km' : ''}${x.place ? ' · ' + esc(x.place) : ''}${x.kind === 'despesa' ? ' · despesa' : ''}</small></div>
+          <div class="val"><b class="num">${money(x.total)}</b></div></div>`).join('')
+        : '<div class="empty">Registre aqui serviços e peças trocadas (amortecedor, pastilhas, óleo…) para ter o histórico do carro.</div>';
+    }
+    async function editService(x) {
+      const isNew = !x; x = x || { id: uid(), date: today(), km: Odo.value() != null ? Math.round(Odo.value()) : null, kind: 'servico' };
+      const v = await form(isNew ? 'Registrar serviço' : 'Editar serviço', [
+        { key: 'desc', label: 'O que foi feito', type: 'text', value: x.desc, required: true, placeholder: 'Ex.: Troca de óleo, pastilhas de freio…' },
+        { key: 'date', label: 'Data', type: 'date', value: x.date },
+        { key: 'km', label: 'Hodômetro', type: 'number', value: x.km, suffix: 'km' },
+        { key: 'total', label: 'Valor', type: 'number', value: x.total, suffix: 'R$' },
+        { key: 'place', label: 'Onde (oficina)', type: 'text', value: x.place },
+        { key: 'kind', label: 'Tipo', type: 'select', value: x.kind, options: [['servico', 'Serviço / peça'], ['despesa', 'Outra despesa (IPVA, seguro, lavagem…)']] }
+      ], { extra: isNew ? [] : [['Excluir', 'danger', 'del']] });
+      if (!v) return;
+      const l = store.json('services', []).filter(y => y.id !== x.id);
+      if (v._action !== 'del') {
+        l.push({ ...x, desc: v.desc, date: v.date || today(), km: v.km, total: v.total || 0, place: v.place, kind: v.kind });
+        if (v._action === 'ok' && isNew && v.kind === 'servico') syncMaint([{ desc: v.desc, date: v.date || today(), km: v.km }]);
+      }
+      store.put('services', l); render();
+    }
+    $('btn-svc-add').onclick = () => editService();
+    $('svc-list').addEventListener('click', e => { const r = e.target.closest('.svc'); if (r) editService(store.json('services', []).find(x => x.id === r.dataset.id)); });
+    function servicesCsv() {
+      return csv(['Data', 'Hodômetro (km)', 'Descrição', 'Valor (R$)', 'Local', 'Tipo'],
+        services().map(x => [dateBR(x.date), x.km, x.desc, x.total, x.place, x.kind === 'despesa' ? 'Despesa' : 'Serviço']));
+    }
+    $('btn-svc-csv').onclick = () => exportOne('servicos', servicesCsv());
+
+    /** Atualiza (ou cria) os lembretes de manutenção a partir de serviços feitos. Retorna nomes alterados. */
+    function syncMaint(list) {
+      const its = items(), changed = [];
+      for (const sv of list.slice().sort((a, b) => a.date.localeCompare(b.date))) {
+        const m = Importer.matchMaint(sv.desc); if (!m) continue;
+        let it = its.find(x => x.name === m[1]);
+        if (!it) { it = { id: uid(), name: m[1], everyKm: m[2] || null, everyMonths: m[3] || null, lastKm: null, lastDate: null }; its.push(it); }
+        if (!it.lastDate || sv.date >= it.lastDate) { it.lastDate = sv.date; if (sv.km != null) it.lastKm = sv.km; if (!changed.includes(it.name)) changed.push(it.name); }
+      }
+      store.put('maint', its);
+      return changed;
+    }
+
+    /* ---------- importar do Drivvo ---------- */
+    function importDrivvo(text) {
+      const r = Importer.parseDrivvo(text);
+      if (!r.fuel.length && !r.services.length) { dialog('Nada encontrado', 'Esse arquivo não parece ser uma exportação do Drivvo (CSV).'); return; }
+      const fk = x => `${x.date}|${Math.round(x.km)}|${Math.round(x.liters * 100)}`, sk = x => `${x.date}|${Math.round(x.km || 0)}|${(x.desc || '').toLowerCase()}|${Math.round((x.total || 0) * 100)}`;
+      const fl = store.json('fuelLogs', []), sl = store.json('services', []);
+      const fSeen = new Set(fl.map(fk)), sSeen = new Set(sl.map(sk));
+      let nf = 0, ns = 0;
+      for (const e of r.fuel) if (!fSeen.has(fk(e))) { fSeen.add(fk(e)); fl.push({ id: uid(), ...e }); nf++; }
+      for (const e of r.services) if (!sSeen.has(sk(e))) { sSeen.add(sk(e)); sl.push({ id: uid(), ...e }); ns++; }
+      store.put('fuelLogs', fl); store.put('services', sl);
+      const changed = syncMaint(r.services.filter(x => x.kind === 'servico'));
+      const maxKm = Math.max(...r.fuel.map(x => x.km), ...r.services.map(x => x.km || 0));
+      const odoBefore = Odo.value();
+      if (odoBefore == null || maxKm > odoBefore) Odo.set(maxKm);
+      render();
+      const due = dueList();
+      dialog('Importação concluída',
+        `${nf} abastecimento(s) e ${ns} serviço(s) importados` + (r.fuel.length + r.services.length - nf - ns ? ` (${r.fuel.length + r.services.length - nf - ns} já existiam e foram ignorados)` : '') + '.\n\n' +
+        (odoBefore == null || maxKm > odoBefore ? `Hodômetro ajustado para ${fmtInt(maxKm)} km (último registro). Se o carro já rodou mais, toque em “Ajustar”.\n\n` : '') +
+        (changed.length ? `Lembretes atualizados pelo histórico: ${changed.join(', ')}.\n\n` : '') +
+        (due.length ? 'Atenção: ' + due.map(([it, s]) => `${it.name} (${leftText(s)})`).join('; ') + '.' : ''));
+    }
+    $('btn-import').onclick = () => $('import-file').click();
+    $('import-file').addEventListener('change', e => {
+      const f = e.target.files[0]; if (!f) return;
+      const rd = new FileReader(); rd.onload = () => { importDrivvo(rd.result); e.target.value = ''; }; rd.readAsText(f, 'utf-8');
+    });
 
     // comparar consumo real (tanque cheio a tanque cheio) com o calculado pelo app nas viagens do mesmo período
     function renderCalib(st) {
@@ -297,7 +382,7 @@
     $('btn-fuel-csv').onclick = () => exportOne('abastecimentos', fuelCsv());
     $('btn-maint-csv').onclick = () => exportOne('manutencoes', maintCsv());
     on('pane', id => { if (id === 'garage-pane') render(); });
-    return { render, lastPrice, dueList, fuelCsv, maintCsv, maintStatus, leftText };
+    return { render, lastPrice, dueList, fuelCsv, maintCsv, servicesCsv, maintStatus, leftText, importDrivvo };
   })();
   window.Garage = Garage;
 
@@ -610,6 +695,7 @@
           <button class="btn accent" id="btn-backup">Fazer backup</button>
           <button class="btn" id="btn-restore">Restaurar backup</button>
           <button class="btn" id="btn-export-all">Exportar planilhas</button>
+          <button class="btn" id="btn-import2">Importar do Drivvo</button>
           <button class="btn danger" id="btn-wipe">Apagar tudo</button>
         </div>
         <input type="file" id="restore-file" accept=".json,application/json,text/plain,*/*" hidden>
@@ -635,8 +721,9 @@
     if (id === 'btn-backup') backup();
     if (id === 'btn-restore') $('restore-file').click();
     if (id === 'btn-export-all') exportAll();
-    if (id === 'btn-wipe' && (await dialog('Apagar todos os dados?', 'Viagens, abastecimentos, manutenções, testes, hodômetro e ajustes serão apagados deste celular. Faça um backup antes se quiser guardar.', [['Cancelar', ''], ['Apagar tudo', 'danger']])) === 1) {
-      ['trips', 'tripCur', 'fuelLogs', 'maint', 'odo', 'perf', 'settings', 'vcal', 'maintAlertDay'].forEach(k => localStorage.removeItem(k));
+    if (id === 'btn-import2') $('import-file').click();
+    if (id === 'btn-wipe' && (await dialog('Apagar todos os dados?', 'Viagens, abastecimentos, serviços, manutenções, testes, hodômetro e ajustes serão apagados deste celular. Faça um backup antes se quiser guardar.', [['Cancelar', ''], ['Apagar tudo', 'danger']])) === 1) {
+      ['trips', 'tripCur', 'fuelLogs', 'maint', 'services', 'odo', 'perf', 'settings', 'vcal', 'maintAlertDay'].forEach(k => localStorage.removeItem(k));
       location.reload();
     }
   });
@@ -644,7 +731,7 @@
   on('pane', id => { if (id === 'settings-pane') renderSettings(); });
 
   /* ============================== EXPORTAR E BACKUP ============================== */
-  const KEYS = ['settings', 'trips', 'fuelLogs', 'maint', 'odo', 'perf', 'vcal', 'device', 'deviceName'];
+  const KEYS = ['settings', 'trips', 'fuelLogs', 'maint', 'services', 'odo', 'perf', 'vcal', 'device', 'deviceName'];
   async function exportOne(name, text) {
     const file = `${name}_${stamp()}.csv`;
     const where = await Files.save(file, text, 'text/csv');
@@ -653,8 +740,8 @@
   }
   async function exportAll() {
     const s = stamp(), out = [];
-    for (const [n, t] of [['viagens', Trips.toCsv()], ['abastecimentos', Garage.fuelCsv()], ['manutencoes', Garage.maintCsv()]]) out.push(await Files.save(`${n}_${s}.csv`, t, 'text/csv'));
-    dialog('Planilhas salvas', `3 arquivos salvos:\n\n${out.join('\n')}`);
+    for (const [n, t] of [['viagens', Trips.toCsv()], ['abastecimentos', Garage.fuelCsv()], ['manutencoes', Garage.maintCsv()], ['servicos', Garage.servicesCsv()]]) out.push(await Files.save(`${n}_${s}.csv`, t, 'text/csv'));
+    dialog('Planilhas salvas', `4 arquivos salvos:\n\n${out.join('\n')}`);
   }
   async function backup() {
     const data = {}; KEYS.forEach(k => (data[k] = localStorage.getItem(k)));

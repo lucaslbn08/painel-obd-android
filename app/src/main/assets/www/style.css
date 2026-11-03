@@ -292,3 +292,5 @@ nav button.active svg { filter: drop-shadow(0 0 6px rgba(31, 212, 255, .5)); }
   nav button { font-size: 10px; }
   .menu { grid-template-columns: 1fr 1fr; }
 }
+
+.import-btn { width: 100%; margin-top: 10px; padding: 12px; border: 1px dashed var(--accent-dark); color: var(--accent); background: transparent; }
